@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Block Generator - nodmiz3</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; background: #f5f5f5; padding: 40px; }
+    .card {
+      background: white; max-width: 700px; margin: 0 auto; padding: 30px;
+      border-radius: 12px; box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+    input, textarea {
+      width: 100%; padding: 10px; margin-top: 10px;
+      border-radius: 6px; border: 1px solid #ccc; font-size: 16px;
+    }
+    button {
+      margin-top: 20px; padding: 12px 20px; font-size: 16px;
+      border: none; border-radius: 6px; background: #0078d4; color: white;
+      cursor: pointer;
+    }
+    button:hover { background: #005fa3; }
+    pre {
+      background: #222; color: #0f0; padding: 20px;
+      border-radius: 10px; margin-top: 20px; overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>画像 → ブロック生成 (.mcaddon)</h1>
+    <p>画像をアップロードすると、その画像をテクスチャにしたブロックを自動生成します。</p>
+
+    <label>ブロックID（例: myaddon:my_block）</label>
+    <input id="blockId" type="text">
+
+    <label>表示名</label>
+    <input id="blockName" type="text">
+
+    <label>ブロックのテクスチャ画像</label>
+    <input id="imageInput" type="file" accept="image/*">
+
+    <button onclick="generate()">JSON を生成</button>
+    <button onclick="downloadMcaddon()">.mcaddon をダウンロード</button>
+
+    <pre id="output"></pre>
+
+    <script>
+      let generatedJson = null;
+      let imageData = null;
+
+      document.getElementById("imageInput").addEventListener("change", function(e) {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          imageData = evt.target.result;
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      function generate() {
+        const id = document.getElementById("blockId").value;
+        const name = document.getElementById("blockName").value;
+
+        generatedJson = {
+          "format_version": "1.20.10",
+          "minecraft:block": {
+            "description": {
+              "identifier": id
+            },
+            "components": {
+              "minecraft:display_name": name,
+              "minecraft:material_instances": {
+                "*": {
+                  "texture": id.split(":")[1],
+                  "render_method": "opaque"
+                }
+              }
+            }
+          }
+        };
+
+        document.getElementById("output").textContent =
+          JSON.stringify(generatedJson, null, 2);
+      }
+
+      async function downloadMcaddon() {
+        if (!generatedJson || !imageData) {
+          alert("JSON生成と画像アップロードを先に行ってください");
+          return;
+        }
+
+        const zip = new JSZip();
+
+        // manifest.json
+        zip.file("manifest.json", JSON.stringify({
+          "format_version": 2,
+          "header": {
+            "name": "Generated Block Addon",
+            "uuid": crypto.randomUUID(),
+            "version": [1, 0, 0],
+            "min_engine_version": [1, 20, 10]
+          },
+          "modules": [
+            {
+              "type": "data",
+              "uuid": crypto.randomUUID(),
+              "version": [1, 0, 0]
+            },
+            {
+              "type": "resources",
+              "uuid": crypto.randomUUID(),
+              "version": [1, 0, 0]
+            }
+          ]
+        }, null, 2));
+
+        // BP
+        zip.file("blocks/" + generatedJson.minecraft.block.description.identifier + ".json",
+          JSON.stringify(generatedJson, null, 2)
+        );
+
+        // RP: テクスチャ
+        const textureName = generatedJson.minecraft.block.description.identifier.split(":")[1];
+        zip.file("textures/blocks/" + textureName + ".png", imageData);
+
+        // RP: terrain_texture.json
+        zip.file("textures/terrain_texture.json", JSON.stringify({
+          "texture_data": {
+            [textureName]: {
+              "textures": "textures/blocks/" + textureName + ".png"
+            }
+          }
+        }, null, 2));
+
+        const blob = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "generated_block.mcaddon";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    </script>
+
+    <div class="nav">
+      <a href="index.html">Home</a> |
+      <a href="tools.html">Tools</a> |
+      <a href="mods.html">Mods</a>
+    </div>
+  </div>
+</body>
+</html>
